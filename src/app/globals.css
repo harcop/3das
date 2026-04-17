@@ -4,7 +4,6 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Repo Pilot subtle settings UI — aligned with public/design-system.css tokens */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

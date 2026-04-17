@@ -449,9 +449,9 @@ export function ViewerApp() {
   }, [selectedAsset.name]);
 
   return (
-    <div className="h-screen w-screen bg-[var(--bg-main)] text-[var(--text)]">
+    <div className="dark h-screen w-screen bg-background text-foreground">
       <div className="flex h-full w-full overflow-hidden">
-        <aside className={`${leftCollapsed ? "w-0 p-0 opacity-0" : "w-[220px] p-3 opacity-100"} hidden border-r border-[var(--line)] bg-[var(--bg-panel)] transition-all duration-200 md:flex md:flex-col`}>
+        <aside className={`${leftCollapsed ? "w-0 p-0 opacity-0" : "w-[220px] p-3 opacity-100"} hidden border-r border-border bg-card transition-all duration-200 md:flex md:flex-col`}>
           {!leftCollapsed && (
             <>
               <Input
@@ -507,8 +507,8 @@ export function ViewerApp() {
                       className={cn(
                         "relative w-full rounded border p-2 text-left transition-colors",
                         active
-                          ? "border-[#687181] bg-[#3a414f]"
-                          : "border-[#3c4350] bg-[var(--bg-panel-soft)]/60 hover:bg-[#3a4250]"
+                          ? "border-ring bg-accent"
+                          : "border-border bg-muted/40 hover:bg-muted/70"
                       )}
                       onClick={() => setSelectedId(asset.id)}
                       onMouseEnter={() => {
@@ -520,10 +520,10 @@ export function ViewerApp() {
                         setTooltipId(null);
                       }}
                     >
-                      <div className="mb-1 h-12 rounded border border-[#495262] bg-[#353c49]" />
+                      <div className="mb-1 h-12 rounded border border-border bg-muted/80" />
                       <p className="truncate text-sm font-medium">{asset.name}</p>
                       <div className="mt-1">
-                        <Badge variant="neutral">{asset.category}</Badge>
+                        <Badge variant="secondary">{asset.category}</Badge>
                       </div>
                       {tooltipId === asset.id && (
                         <div className="absolute left-2 top-2 rounded bg-slate-950/95 px-2 py-1 text-[10px]">
@@ -543,7 +543,7 @@ export function ViewerApp() {
         </aside>
 
         <main ref={viewportRef} className="relative flex-1">
-          <div className="absolute left-0 right-0 top-0 z-30 flex items-center justify-between border-b border-[var(--line)] bg-[#222831d9] px-3 py-2 text-xs backdrop-blur-sm">
+          <div className="absolute left-0 right-0 top-0 z-30 flex items-center justify-between border-b border-border bg-background/85 px-3 py-2 text-xs backdrop-blur-sm">
             <div className="flex gap-3">
               <Badge variant="default">Mode: {renderMode}</Badge>
               <Badge variant="default">Camera: {cameraMode}</Badge>
@@ -589,13 +589,13 @@ export function ViewerApp() {
           </Canvas>
 
           {showSpinner && loading && (
-            <div className="absolute inset-0 z-20 grid place-items-center bg-[#161c25c9]">
-              <div className="h-10 w-10 animate-spin rounded-full border-2 border-[#4b5361] border-t-[#a1a9b7]" />
+            <div className="absolute inset-0 z-20 grid place-items-center bg-background/75">
+              <div className="h-10 w-10 animate-spin rounded-full border-2 border-border border-t-foreground" />
             </div>
           )}
 
           {!isFullscreen && (
-            <div className="pointer-events-none absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-full border border-[#515969] bg-[#2b313cca] px-4 py-1 text-sm">
+            <div className="pointer-events-none absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-full border border-border bg-card/90 px-4 py-1 text-sm">
               {selectedAsset.name}
             </div>
           )}
@@ -606,7 +606,7 @@ export function ViewerApp() {
           </div>
         </main>
 
-        <aside className={`${rightCollapsed ? "w-0 p-0 opacity-0" : "w-[260px] p-3 opacity-100"} hidden border-l border-[var(--line)] bg-[var(--bg-panel)] transition-all duration-200 md:flex md:flex-col`}>
+        <aside className={`${rightCollapsed ? "w-0 p-0 opacity-0" : "w-[260px] p-3 opacity-100"} hidden border-l border-border bg-card transition-all duration-200 md:flex md:flex-col`}>
           {!rightCollapsed && (
             <div className="flex h-full flex-col gap-3 overflow-y-auto text-sm">
               <Card>
@@ -683,7 +683,7 @@ export function ViewerApp() {
       </div>
 
       {mobileLibraryOpen && (
-        <div className="absolute inset-x-0 bottom-0 z-50 max-h-[55vh] overflow-y-auto border-t border-slate-700 bg-[#0b1324] p-3 md:hidden">
+        <div className="absolute inset-x-0 bottom-0 z-50 max-h-[55vh] overflow-y-auto border-t border-border bg-card p-3 md:hidden">
           <div className="mb-2 flex items-center justify-between">
             <strong className="text-sm">Assets</strong>
             <button className="text-xs" onClick={() => setMobileLibraryOpen(false)}>Close</button>
@@ -699,14 +699,14 @@ export function ViewerApp() {
       )}
 
       {mobileControlsOpen && (
-        <div className="absolute inset-x-0 bottom-0 z-50 max-h-[60vh] overflow-y-auto border-t border-slate-700 bg-[#0b1324] p-3 md:hidden">
+        <div className="absolute inset-x-0 bottom-0 z-50 max-h-[60vh] overflow-y-auto border-t border-border bg-card p-3 md:hidden">
           <div className="mb-2 flex items-center justify-between">
             <strong className="text-sm">Quick Controls</strong>
             <button className="text-xs" onClick={() => setMobileControlsOpen(false)}>Close</button>
           </div>
           <div className="grid grid-cols-2 gap-2 text-xs">
             {(["Solid", "Wireframe", "Texture", "X-Ray"] as RenderMode[]).map((mode) => (
-              <button key={mode} className={`rounded border px-2 py-2 ${renderMode === mode ? "border-[#6f7888] bg-[#454d5b]" : "border-[#4b5360] bg-[#2c3139]"}`} onClick={() => setRenderMode(mode)}>
+              <button key={mode} className={`rounded border px-2 py-2 ${renderMode === mode ? "border-ring bg-accent text-accent-foreground" : "border-border bg-muted/50"}`} onClick={() => setRenderMode(mode)}>
                 {mode}
               </button>
             ))}

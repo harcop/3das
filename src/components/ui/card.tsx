@@ -1,28 +1,35 @@
-import * as React from "react";
-import { cn } from "@/lib/utils";
+import * as React from "react"
 
-const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn("rounded-md border border-[#404756] bg-[#282d36]/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]", className)}
-    {...props}
-  />
-));
-Card.displayName = "Card";
+import { cn } from "@/lib/utils"
 
-const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("flex flex-col space-y-1.5 p-3", className)} {...props} />
-));
-CardHeader.displayName = "CardHeader";
+function Card({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card"
+      className={cn("bg-card text-card-foreground flex flex-col gap-3 rounded-lg border py-4 shadow-xs", className)}
+      {...props}
+    />
+  )
+}
 
-const CardTitle = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLHeadingElement>>(({ className, ...props }, ref) => (
-  <h3 ref={ref} className={cn("text-sm font-semibold tracking-tight text-[#d8dee9]", className)} {...props} />
-));
-CardTitle.displayName = "CardTitle";
+function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return <div data-slot="card-header" className={cn("grid auto-rows-min grid-rows-[auto_auto] items-start gap-1.5 px-4", className)} {...props} />
+}
 
-const CardContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("p-3 pt-0", className)} {...props} />
-));
-CardContent.displayName = "CardContent";
+function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
+  return <div data-slot="card-title" className={cn("leading-none font-semibold", className)} {...props} />
+}
 
-export { Card, CardHeader, CardTitle, CardContent };
+function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
+  return <div data-slot="card-description" className={cn("text-muted-foreground text-sm", className)} {...props} />
+}
+
+function CardContent({ className, ...props }: React.ComponentProps<"div">) {
+  return <div data-slot="card-content" className={cn("px-4", className)} {...props} />
+}
+
+function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return <div data-slot="card-footer" className={cn("flex items-center px-4", className)} {...props} />
+}
+
+export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent }
