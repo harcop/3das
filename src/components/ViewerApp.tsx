@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Canvas, ThreeEvent, useLoader, useThree } from "@react-three/fiber";
 import { Environment, GizmoHelper, GizmoViewport, Grid, OrbitControls } from "@react-three/drei";
 import {
@@ -13,15 +13,14 @@ import {
   MeshLambertMaterial,
   MeshStandardMaterial,
   Object3D,
-  Vector3
+  Vector3,
+  type Material
 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 type RenderMode = "Solid" | "Wireframe" | "Texture" | "X-Ray";
@@ -78,6 +77,15 @@ function bytesToSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+function PropertySection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="border-b border-border">
+      <div className="blender-panel-header">{title}</div>
+      <div className="space-y-2 px-2 py-1.5">{children}</div>
+    </div>
+  );
+}
+
 function collectStats(object: Object3D): Stats {
   let vertices = 0;
   let polygons = 0;
@@ -99,14 +107,40 @@ function collectBounds(object: Object3D): Bounds {
   return { center, size, radius };
 }
 
+function disposeMaterial(material: Material | Material[] | null | undefined) {
+  if (!material) return;
+  if (Array.isArray(material)) {
+    material.forEach((m) => m.dispose());
+    return;
+  }
+  material.dispose();
+}
+
+/** Full dispose for cloned loader roots (materials + geometries). */
+function disposeObject3D(root: Object3D) {
+  root.traverse((node) => {
+    if (!(node instanceof Mesh)) return;
+    disposeMaterial(node.material);
+    node.geometry?.dispose();
+  });
+}
+
+const VIEWER_MATERIAL_TAG = "__viewerAppliedMaterial";
+
 function applyRenderMode(object: Object3D, mode: RenderMode) {
   object.traverse((node) => {
     if (!(node instanceof Mesh)) return;
     const prior = Array.isArray(node.material) ? node.material[0] : node.material;
-    const base = prior instanceof MeshStandardMaterial ? prior : new MeshStandardMaterial({ color: "#b7c7f5" });
+    const base = prior instanceof MeshStandardMaterial ? prior : new MeshStandardMaterial({ color: "#8a9099" });
+    const oldMats = Array.isArray(node.material) ? node.material : [node.material];
+    oldMats.forEach((m) => {
+      if (m && (m as Material & { userData?: Record<string, unknown> }).userData?.[VIEWER_MATERIAL_TAG]) {
+        m.dispose();
+      }
+    });
     let nextMaterial: MeshBasicMaterial | MeshLambertMaterial | MeshStandardMaterial;
     if (mode === "Wireframe") {
-      nextMaterial = new MeshBasicMaterial({ color: new Color("#90d8ff"), wireframe: true });
+      nextMaterial = new MeshBasicMaterial({ color: new Color("#b0b5bd"), wireframe: true });
     } else if (mode === "Texture") {
       nextMaterial = new MeshLambertMaterial({ color: base.color, map: base.map ?? null });
     } else if (mode === "X-Ray") {
@@ -125,6 +159,7 @@ function applyRenderMode(object: Object3D, mode: RenderMode) {
         metalness: base.metalness ?? 0.1
       });
     }
+    nextMaterial.userData = { ...nextMaterial.userData, [VIEWER_MATERIAL_TAG]: true };
     node.material = nextMaterial;
     node.castShadow = true;
     node.receiveShadow = true;
@@ -141,9 +176,10 @@ function ProceduralModel({
   onReady: (root: Object3D) => void;
 }) {
   const ref = useRef<Group>(null);
+  /* Layout / bounds only depend on geometry kind, not shading mode (avoids redundant camera refits). */
   useEffect(() => {
     if (ref.current) onReady(ref.current);
-  }, [kind, renderMode, onReady]);
+  }, [kind, onReady]);
 
   const style =
     renderMode === "Wireframe"
@@ -154,7 +190,7 @@ function ProceduralModel({
           ? { wireframe: false, transparent: true, opacity: 0.36, flatShading: false }
           : { wireframe: false, transparent: false, opacity: 1, flatShading: false };
 
-  const color = kind === "transport" ? "#6dc7ff" : kind === "mechanical" ? "#8aff90" : "#f6d67f";
+  const color = kind === "transport" ? "#7a8aa0" : kind === "mechanical" ? "#8a9588" : "#9a9080";
 
   return (
     <group ref={ref}>
@@ -167,7 +203,7 @@ function ProceduralModel({
           {[[-0.8, 0.1, 0.7], [0.8, 0.1, 0.7], [-0.8, 0.1, -0.7], [0.8, 0.1, -0.7]].map((pos, idx) => (
             <mesh key={idx} castShadow receiveShadow position={pos as [number, number, number]}>
               <cylinderGeometry args={[0.28, 0.28, 0.2, 24]} />
-              <meshStandardMaterial color="#1f2430" {...style} />
+              <meshStandardMaterial color="#3d4249" {...style} />
             </mesh>
           ))}
         </group>
@@ -180,7 +216,7 @@ function ProceduralModel({
           </mesh>
           <mesh castShadow receiveShadow position={[0, -0.8, 0]}>
             <cylinderGeometry args={[0.3, 0.3, 0.5, 24]} />
-            <meshStandardMaterial color="#64748b" {...style} />
+            <meshStandardMaterial color="#5c646e" {...style} />
           </mesh>
         </group>
       )}
@@ -192,7 +228,7 @@ function ProceduralModel({
           </mesh>
           <mesh castShadow receiveShadow position={[0, 2.1, 0]}>
             <coneGeometry args={[0.92, 0.72, 8]} />
-            <meshStandardMaterial color="#8b5e3c" {...style} />
+            <meshStandardMaterial color="#6b5c4c" {...style} />
           </mesh>
         </group>
       )}
@@ -207,6 +243,9 @@ function GLTFModel({ asset, renderMode, onReady }: { asset: AssetItem; renderMod
     applyRenderMode(object, renderMode);
     onReady(object);
   }, [object, renderMode, onReady]);
+  useEffect(() => {
+    return () => disposeObject3D(object);
+  }, [object]);
   return <primitive object={object} />;
 }
 
@@ -217,6 +256,9 @@ function OBJModel({ asset, renderMode, onReady }: { asset: AssetItem; renderMode
     applyRenderMode(object, renderMode);
     onReady(object);
   }, [object, renderMode, onReady]);
+  useEffect(() => {
+    return () => disposeObject3D(object);
+  }, [object]);
   return <primitive object={object} />;
 }
 
@@ -227,6 +269,9 @@ function FBXModel({ asset, renderMode, onReady }: { asset: AssetItem; renderMode
     applyRenderMode(object, renderMode);
     onReady(object);
   }, [object, renderMode, onReady]);
+  useEffect(() => {
+    return () => disposeObject3D(object);
+  }, [object]);
   return <primitive object={object} />;
 }
 
@@ -309,7 +354,7 @@ function SceneContent({
 
   return (
     <>
-      <color attach="background" args={["#232831"]} />
+      <color attach="background" args={["#404040"]} />
       <ambientLight intensity={0.3 + environmentIntensity * 0.85} />
       {showDirectLight && <directionalLight position={[6, 7, 2]} intensity={1.2} castShadow={showShadows} />}
       {showEnvironment && <Environment preset="city" environmentIntensity={environmentIntensity} />}
@@ -335,16 +380,16 @@ function SceneContent({
       {showGrid && (
         <Grid
           args={[30, 30]}
-          sectionColor="#1e3a8a"
-          cellColor="#1f2937"
-          fadeDistance={24}
-          fadeStrength={1.8}
+          sectionColor="#5c5c5c"
+          cellColor="#4a4a4a"
+          fadeDistance={22}
+          fadeStrength={1.65}
           infiniteGrid
         />
       )}
       <OrbitControls ref={controlsRef} enableDamping />
       <GizmoHelper alignment="bottom-left" margin={[80, 80]}>
-        <GizmoViewport axisColors={["#ff4d4f", "#4fd1ff", "#45d26b"]} labelColor="#dbeafe" />
+        <GizmoViewport axisColors={["#c75454", "#6b9fd4", "#6eb572"]} labelColor="#c8c8c8" />
       </GizmoHelper>
     </>
   );
@@ -395,10 +440,32 @@ export function ViewerApp() {
     [assets, search, formatFilter, categoryFilter]
   );
 
+  const trackedBlobUrls = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const next = new Set(assets.filter((a) => a.fileUrl?.startsWith("blob:")).map((a) => a.fileUrl as string));
+    trackedBlobUrls.current.forEach((url) => {
+      if (!next.has(url)) URL.revokeObjectURL(url);
+    });
+    trackedBlobUrls.current = next;
+  }, [assets]);
+
+  useEffect(() => {
+    if (!filteredAssets.length) return;
+    if (!filteredAssets.some((a) => a.id === selectedId)) {
+      setSelectedId(filteredAssets[0].id);
+    }
+  }, [filteredAssets, selectedId]);
+
   useEffect(() => {
     const onFullChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener("fullscreenchange", onFullChange);
     return () => document.removeEventListener("fullscreenchange", onFullChange);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current != null) window.clearTimeout(hoverTimerRef.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -429,8 +496,8 @@ export function ViewerApp() {
 
   const triggerFullscreen = useCallback(() => {
     if (!viewportRef.current) return;
-    if (!document.fullscreenElement) viewportRef.current.requestFullscreen();
-    else document.exitFullscreen();
+    if (!document.fullscreenElement) void viewportRef.current.requestFullscreen?.().catch(() => undefined);
+    else void document.exitFullscreen?.().catch(() => undefined);
   }, []);
 
   const saveSnapshot = useCallback(() => {
@@ -448,29 +515,49 @@ export function ViewerApp() {
     link.click();
   }, [selectedAsset.name]);
 
+  const onCanvasReady = useCallback((canvas: HTMLCanvasElement) => {
+    canvasRef.current = canvas;
+  }, []);
+
+  const onModelReady = useCallback((nextStats: Stats, overBudget: boolean) => {
+    setStats(nextStats);
+    setLoading(false);
+    setShowSpinner(false);
+    if (overBudget) window.alert("Warning: this model exceeds 2M polygons and may reduce frame rate.");
+  }, []);
+
+  const selectClass =
+    "h-7 min-w-0 flex-1 rounded-none border border-border bg-secondary px-1.5 text-[11px] text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+
   return (
-    <div className="dark h-screen w-screen bg-background text-foreground">
-      <div className="flex h-full w-full overflow-hidden">
-        <aside className={`${leftCollapsed ? "w-0 p-0 opacity-0" : "w-[220px] p-3 opacity-100"} hidden border-r border-border bg-card transition-all duration-200 md:flex md:flex-col`}>
+    <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-background text-[11px] text-foreground select-none">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <aside
+          className={cn(
+            "hidden shrink-0 flex-col border-r border-border bg-card md:flex",
+            leftCollapsed ? "w-0 overflow-hidden border-0 opacity-0" : "w-[220px] opacity-100"
+          )}
+        >
           {!leftCollapsed && (
             <>
+              <div className="blender-panel-header">Outliner</div>
               <Input
                 aria-label="Search assets"
-                className="mb-2 h-8"
-                placeholder="Search assets..."
+                className="h-7 rounded-none border-0 border-b border-border bg-card text-[11px] shadow-none focus-visible:ring-0"
+                placeholder="Search…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-              <div className="mb-2 flex gap-2">
-                <select aria-label="Filter formats" className="w-1/2 rounded border border-slate-700 bg-slate-900/80 px-1 py-1 text-xs" value={formatFilter} onChange={(e) => setFormatFilter(e.target.value as Format | "all")}>
-                  <option value="all">All formats</option>
+              <div className="flex gap-0 border-b border-border">
+                <select aria-label="Filter formats" className={cn(selectClass, "border-0 border-r")} value={formatFilter} onChange={(e) => setFormatFilter(e.target.value as Format | "all")}>
+                  <option value="all">Format</option>
                   <option value=".glb">.glb</option>
                   <option value=".gltf">.gltf</option>
                   <option value=".obj">.obj</option>
                   <option value=".fbx">.fbx</option>
                 </select>
-                <select aria-label="Filter categories" className="w-1/2 rounded border border-slate-700 bg-slate-900/80 px-1 py-1 text-xs" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-                  <option value="all">All categories</option>
+                <select aria-label="Filter categories" className={cn(selectClass, "border-0")} value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+                  <option value="all">Category</option>
                   {categories.map((category) => (
                     <option key={category} value={category}>
                       {category}
@@ -481,10 +568,13 @@ export function ViewerApp() {
               <div
                 role="listbox"
                 tabIndex={0}
-                className="flex-1 space-y-2 overflow-y-auto"
+                className="min-h-0 flex-1 overflow-y-auto"
                 onKeyDown={(e) => {
                   if (!filteredAssets.length) return;
-                  const index = filteredAssets.findIndex((item) => item.id === selectedAsset.id);
+                  const index = Math.max(
+                    0,
+                    filteredAssets.findIndex((item) => item.id === selectedAsset.id)
+                  );
                   if (e.key === "ArrowDown") {
                     e.preventDefault();
                     setSelectedId(filteredAssets[(index + 1) % filteredAssets.length].id);
@@ -505,10 +595,8 @@ export function ViewerApp() {
                       role="option"
                       aria-selected={active}
                       className={cn(
-                        "relative w-full rounded border p-2 text-left transition-colors",
-                        active
-                          ? "border-ring bg-accent"
-                          : "border-border bg-muted/40 hover:bg-muted/70"
+                        "relative flex h-7 w-full items-center gap-1.5 border-b border-border px-1.5 text-left transition-colors hover:bg-muted/40",
+                        active && "bg-[var(--blender-selection)]"
                       )}
                       onClick={() => setSelectedId(asset.id)}
                       onMouseEnter={() => {
@@ -520,14 +608,12 @@ export function ViewerApp() {
                         setTooltipId(null);
                       }}
                     >
-                      <div className="mb-1 h-12 rounded border border-border bg-muted/80" />
-                      <p className="truncate text-sm font-medium">{asset.name}</p>
-                      <div className="mt-1">
-                        <Badge variant="secondary">{asset.category}</Badge>
-                      </div>
+                      <span className="size-4 shrink-0 border border-border bg-muted" aria-hidden />
+                      <span className="min-w-0 flex-1 truncate">{asset.name}</span>
+                      <span className="shrink-0 tabular-nums text-muted-foreground">{asset.format}</span>
                       {tooltipId === asset.id && (
-                        <div className="absolute left-2 top-2 rounded bg-slate-950/95 px-2 py-1 text-[10px]">
-                          {stats.polygons.toLocaleString()} polys - {bytesToSize(asset.sizeBytes)} - {asset.format}
+                        <div className="absolute left-1 top-7 z-10 whitespace-nowrap border border-border bg-popover px-1.5 py-0.5 text-[10px] text-popover-foreground">
+                          {stats.polygons.toLocaleString()} tris · {bytesToSize(asset.sizeBytes)} · {asset.category}
                         </div>
                       )}
                     </button>
@@ -535,163 +621,271 @@ export function ViewerApp() {
                 })}
               </div>
               <input ref={fileInputRef} type="file" className="hidden" accept=".glb,.gltf,.obj,.fbx" onChange={handleImport} />
-              <Button aria-label="Import asset" className="mt-2 w-full" onClick={() => fileInputRef.current?.click()}>
-                + Import Asset
+              <Button
+                aria-label="Import asset"
+                variant="outline"
+                size="sm"
+                className="h-7 w-full rounded-none border-x-0 border-b-0 border-t border-border text-[11px] font-normal"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                Append…
               </Button>
             </>
           )}
         </aside>
 
-        <main ref={viewportRef} className="relative flex-1">
-          <div className="absolute left-0 right-0 top-0 z-30 flex items-center justify-between border-b border-border bg-background/85 px-3 py-2 text-xs backdrop-blur-sm">
-            <div className="flex gap-3">
-              <Badge variant="default">Mode: {renderMode}</Badge>
-              <Badge variant="default">Camera: {cameraMode}</Badge>
+        <main ref={viewportRef} className="relative flex min-w-0 flex-1 flex-col bg-[var(--blender-viewport)]">
+          <div className="z-30 flex h-7 shrink-0 items-center justify-between border-b border-border bg-muted/50 px-1.5">
+            <div className="flex min-w-0 items-center gap-2 truncate text-muted-foreground">
+              <span className="truncate text-foreground">{renderMode}</span>
+              <span className="text-border">|</span>
+              <span className="truncate">{cameraMode === "Perspective" ? "Persp" : "Ortho"}</span>
             </div>
-            <div className="flex gap-2">
-              <Button variant="secondary" size="sm" onClick={() => setLeftCollapsed((v) => !v)}>Library</Button>
-              <Button variant="secondary" size="sm" onClick={() => setRightCollapsed((v) => !v)}>Controls</Button>
-              <Button variant="secondary" size="sm" onClick={triggerFullscreen}>{isFullscreen ? "Exit Fullscreen" : "Fullscreen"}</Button>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <Button variant="outline" size="sm" className="h-6 rounded-sm px-2 text-[11px] font-normal" onClick={() => setLeftCollapsed((v) => !v)}>
+                Outliner
+              </Button>
+              <Button variant="outline" size="sm" className="h-6 rounded-sm px-2 text-[11px] font-normal" onClick={() => setRightCollapsed((v) => !v)}>
+                Properties
+              </Button>
+              <Button variant="outline" size="sm" className="h-6 rounded-sm px-2 text-[11px] font-normal" onClick={triggerFullscreen}>
+                {isFullscreen ? "Exit" : "Max"}
+              </Button>
             </div>
           </div>
 
-          <Canvas
-            key={`${selectedAsset.id}-${cameraMode}`}
-            shadows={showShadows}
-            dpr={[1, 2]}
-            camera={cameraMode === "Perspective" ? { position: [5, 3.8, 5], fov: 50 } : { position: [5, 3.8, 5], zoom: 85 }}
-            orthographic={cameraMode === "Orthographic"}
-            onCreated={({ gl }) => (canvasRef.current = gl.domElement)}
-            onPointerMissed={(event) => {
-              if ((event as unknown as PointerEvent).detail === 2) setResetSignal((v) => v + 1);
-            }}
-            aria-label="3D asset viewport"
-          >
-            <SceneContent
-              asset={selectedAsset}
-              renderMode={renderMode}
-              rotation={rotation}
-              zoom={zoom}
-              showGrid={showGrid}
-              showEnvironment={showEnvironment}
-              environmentIntensity={environmentIntensity}
-              showDirectLight={showDirectLight}
-              showShadows={showShadows}
-              resetSignal={resetSignal}
-              onCanvasReady={(canvas) => (canvasRef.current = canvas)}
-              onModelReady={(nextStats, overBudget) => {
-                setStats(nextStats);
-                setLoading(false);
-                setShowSpinner(false);
-                if (overBudget) window.alert("Warning: this model exceeds 2M polygons and may reduce frame rate.");
+          <div className="relative min-h-0 flex-1">
+            <Canvas
+              key={selectedAsset.id}
+              shadows={showShadows}
+              dpr={[1, 2]}
+              camera={cameraMode === "Perspective" ? { position: [5, 3.8, 5], fov: 50 } : { position: [5, 3.8, 5], zoom: 85 }}
+              orthographic={cameraMode === "Orthographic"}
+              onPointerMissed={(event) => {
+                if ((event as unknown as PointerEvent).detail === 2) setResetSignal((v) => v + 1);
               }}
-            />
-          </Canvas>
+              aria-label="3D asset viewport"
+              className="block h-full w-full"
+            >
+              <SceneContent
+                asset={selectedAsset}
+                renderMode={renderMode}
+                rotation={rotation}
+                zoom={zoom}
+                showGrid={showGrid}
+                showEnvironment={showEnvironment}
+                environmentIntensity={environmentIntensity}
+                showDirectLight={showDirectLight}
+                showShadows={showShadows}
+                resetSignal={resetSignal}
+                onCanvasReady={onCanvasReady}
+                onModelReady={onModelReady}
+              />
+            </Canvas>
 
-          {showSpinner && loading && (
-            <div className="absolute inset-0 z-20 grid place-items-center bg-background/75">
-              <div className="h-10 w-10 animate-spin rounded-full border-2 border-border border-t-foreground" />
-            </div>
-          )}
+            {showSpinner && loading && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-0.5 overflow-hidden bg-border">
+                <div className="h-full w-full origin-left animate-pulse bg-muted-foreground/60" />
+              </div>
+            )}
+          </div>
 
           {!isFullscreen && (
-            <div className="pointer-events-none absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-full border border-border bg-card/90 px-4 py-1 text-sm">
-              {selectedAsset.name}
+            <div className="flex h-6 shrink-0 items-center border-t border-border bg-card px-2 text-[11px] text-muted-foreground">
+              <span className="truncate">{selectedAsset.name}</span>
             </div>
           )}
 
-          <div className="absolute bottom-3 left-3 z-40 flex gap-2 md:hidden">
-                <Button variant="secondary" size="sm" className="rounded-full" onClick={() => setMobileLibraryOpen((v) => !v)}>Assets</Button>
-                <Button size="sm" className="rounded-full" onClick={() => setMobileControlsOpen((v) => !v)}>Controls</Button>
+          <div className="absolute bottom-10 left-2 z-40 flex gap-1 md:hidden">
+            <Button variant="outline" size="sm" className="h-7 rounded-sm text-[11px] font-normal" onClick={() => setMobileLibraryOpen((v) => !v)}>
+              Outliner
+            </Button>
+            <Button variant="outline" size="sm" className="h-7 rounded-sm text-[11px] font-normal" onClick={() => setMobileControlsOpen((v) => !v)}>
+              Props
+            </Button>
           </div>
         </main>
 
-        <aside className={`${rightCollapsed ? "w-0 p-0 opacity-0" : "w-[260px] p-3 opacity-100"} hidden border-l border-border bg-card transition-all duration-200 md:flex md:flex-col`}>
+        <aside
+          className={cn(
+            "hidden shrink-0 flex-col border-l border-border bg-card md:flex",
+            rightCollapsed ? "w-0 overflow-hidden border-0 opacity-0" : "w-[260px] opacity-100"
+          )}
+        >
           {!rightCollapsed && (
-            <div className="flex h-full flex-col gap-3 overflow-y-auto text-sm">
-              <Card>
-                <CardHeader className="pb-2"><CardTitle>Transform</CardTitle></CardHeader>
-                <CardContent>
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+              <div className="blender-panel-header">Properties</div>
+
+              <PropertySection title="Transform">
                 {(["x", "y", "z"] as const).map((axis) => (
-                  <label key={axis} className="mb-2 block text-xs">
-                    {axis.toUpperCase()} Rotation ({Math.round(rotation[axis])}deg)
-                    <input type="range" min={0} max={360} value={rotation[axis]} onChange={(e) => setRotation((prev) => ({ ...prev, [axis]: MathUtils.euclideanModulo(Number(e.target.value), 360) }))} className="w-full" />
-                  </label>
+                  <div key={axis}>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="blender-editor-label">Rotation {axis.toUpperCase()}</span>
+                      <span className="tabular-nums text-muted-foreground">{Math.round(rotation[axis])}°</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={360}
+                      value={rotation[axis]}
+                      onChange={(e) =>
+                        setRotation((prev) => ({
+                          ...prev,
+                          [axis]: MathUtils.euclideanModulo(Number(e.target.value), 360)
+                        }))
+                      }
+                      className="blender-range"
+                    />
+                  </div>
                 ))}
-                <label className="block text-xs">
-                  Distance ({zoom.toFixed(2)}x)
-                  <input aria-label="Camera distance" type="range" min={0.5} max={5} step={0.05} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="w-full" />
-                </label>
-                <Button variant="secondary" size="sm" className="mt-2 w-full" onClick={() => setRotation({ x: 0, y: 0, z: 0 })}>Reset Transform</Button>
-                </CardContent>
-              </Card>
+                <div>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="blender-editor-label">Clip / distance</span>
+                    <span className="tabular-nums text-muted-foreground">{zoom.toFixed(2)}×</span>
+                  </div>
+                  <input
+                    aria-label="Camera distance"
+                    type="range"
+                    min={0.5}
+                    max={5}
+                    step={0.05}
+                    value={zoom}
+                    onChange={(e) => setZoom(Number(e.target.value))}
+                    className="blender-range"
+                  />
+                </div>
+                <Button variant="outline" size="sm" className="h-7 w-full rounded-sm text-[11px] font-normal" onClick={() => setRotation({ x: 0, y: 0, z: 0 })}>
+                  Reset
+                </Button>
+              </PropertySection>
 
-              <Card>
-                <CardHeader className="pb-2"><CardTitle>Render Mode</CardTitle></CardHeader>
-                <CardContent>
-                <div className="grid grid-cols-2 gap-2">
+              <PropertySection title="Viewport display">
+                <div className="grid grid-cols-2 gap-0.5">
                   {(["Solid", "Wireframe", "Texture", "X-Ray"] as RenderMode[]).map((mode) => (
-                    <Button key={mode} variant={renderMode === mode ? "default" : "secondary"} size="sm" onClick={() => setRenderMode(mode)}>
+                    <Button
+                      key={mode}
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        "h-7 rounded-sm text-[11px] font-normal",
+                        renderMode === mode && "border-primary bg-primary/25 text-foreground"
+                      )}
+                      onClick={() => setRenderMode(mode)}
+                    >
                       {mode}
                     </Button>
                   ))}
                 </div>
-                </CardContent>
-              </Card>
+              </PropertySection>
 
-              <Card>
-                <CardHeader className="pb-2"><CardTitle>Lighting</CardTitle></CardHeader>
-                <CardContent>
-                <label className="block text-xs">
-                  Environment Intensity ({Math.round(environmentIntensity * 100)}%)
-                  <input aria-label="Environment intensity" type="range" min={0} max={1} step={0.01} value={environmentIntensity} onChange={(e) => setEnvironmentIntensity(Number(e.target.value))} className="w-full" />
+              <PropertySection title="Lighting">
+                <div>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="blender-editor-label">World</span>
+                    <span className="tabular-nums text-muted-foreground">{Math.round(environmentIntensity * 100)}%</span>
+                  </div>
+                  <input
+                    aria-label="Environment intensity"
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={environmentIntensity}
+                    onChange={(e) => setEnvironmentIntensity(Number(e.target.value))}
+                    className="blender-range"
+                  />
+                </div>
+                <label className="flex h-6 items-center gap-2 blender-editor-label">
+                  <input type="checkbox" className="size-3 rounded-none border border-border accent-[var(--ring)]" checked={showDirectLight} onChange={(e) => setShowDirectLight(e.target.checked)} />
+                  Sun
                 </label>
-                <label className="mt-2 flex items-center gap-2 text-xs"><input type="checkbox" checked={showDirectLight} onChange={(e) => setShowDirectLight(e.target.checked)} />Direct Light</label>
-                <label className="mt-1 flex items-center gap-2 text-xs"><input type="checkbox" checked={showShadows} onChange={(e) => setShowShadows(e.target.checked)} />Shadows</label>
-                <label className="mt-1 flex items-center gap-2 text-xs"><input type="checkbox" checked={showEnvironment} onChange={(e) => setShowEnvironment(e.target.checked)} />HDRI Environment</label>
-                <label className="mt-1 flex items-center gap-2 text-xs"><input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />Grid Floor</label>
-                </CardContent>
-              </Card>
+                <label className="flex h-6 items-center gap-2 blender-editor-label">
+                  <input type="checkbox" className="size-3 rounded-none border border-border accent-[var(--ring)]" checked={showShadows} onChange={(e) => setShowShadows(e.target.checked)} />
+                  Shadows
+                </label>
+                <label className="flex h-6 items-center gap-2 blender-editor-label">
+                  <input type="checkbox" className="size-3 rounded-none border border-border accent-[var(--ring)]" checked={showEnvironment} onChange={(e) => setShowEnvironment(e.target.checked)} />
+                  HDRI
+                </label>
+                <label className="flex h-6 items-center gap-2 blender-editor-label">
+                  <input type="checkbox" className="size-3 rounded-none border border-border accent-[var(--ring)]" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
+                  Grid
+                </label>
+              </PropertySection>
 
-              <Card>
-                <CardHeader className="pb-2"><CardTitle>Camera</CardTitle></CardHeader>
-                <CardContent>
-                <div className="mb-2 flex gap-2">
+              <PropertySection title="View">
+                <div className="grid grid-cols-2 gap-0.5">
                   {(["Perspective", "Orthographic"] as CameraMode[]).map((mode) => (
-                    <Button key={mode} variant={cameraMode === mode ? "default" : "secondary"} size="sm" className="flex-1" onClick={() => setCameraMode(mode)}>
-                      {mode}
+                    <Button
+                      key={mode}
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        "h-7 rounded-sm text-[11px] font-normal",
+                        cameraMode === mode && "border-primary bg-primary/25 text-foreground"
+                      )}
+                      onClick={() => setCameraMode(mode)}
+                    >
+                      {mode === "Perspective" ? "Persp" : "Ortho"}
                     </Button>
                   ))}
                 </div>
-                <Button variant="secondary" size="sm" className="mb-2 w-full" onClick={() => setResetSignal((v) => v + 1)}>Reset Camera</Button>
-                <Button variant="secondary" size="sm" className="w-full" onClick={saveSnapshot}>Snapshot (PNG 2x)</Button>
-                </CardContent>
-              </Card>
+                <Button variant="outline" size="sm" className="h-7 w-full rounded-sm text-[11px] font-normal" onClick={() => setResetSignal((v) => v + 1)}>
+                  View home
+                </Button>
+                <Button variant="outline" size="sm" className="h-7 w-full rounded-sm text-[11px] font-normal" onClick={saveSnapshot}>
+                  Save viewport (2× PNG)
+                </Button>
+              </PropertySection>
 
-              <Card className="mt-auto text-xs">
-                <CardHeader className="pb-2"><CardTitle>Asset Metadata</CardTitle></CardHeader>
-                <CardContent className="space-y-1">
-                <p>Polygons: {stats.polygons.toLocaleString()}</p>
-                <p>Vertices: {stats.vertices.toLocaleString()}</p>
-                <p>Format: {selectedAsset.format}</p>
-                <p>File Size: {bytesToSize(selectedAsset.sizeBytes)}</p>
-                </CardContent>
-              </Card>
+              <div className="mt-auto border-t border-border">
+                <div className="blender-panel-header">Mesh data</div>
+                <div className="space-y-0.5 px-2 py-1.5 font-mono text-[10px] text-muted-foreground">
+                  <div className="flex justify-between gap-2">
+                    <span>Tris</span>
+                    <span className="text-foreground">{stats.polygons.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span>Verts</span>
+                    <span className="text-foreground">{stats.vertices.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span>Format</span>
+                    <span className="text-foreground">{selectedAsset.format}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span>Size</span>
+                    <span className="text-foreground">{bytesToSize(selectedAsset.sizeBytes)}</span>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </aside>
       </div>
 
       {mobileLibraryOpen && (
-        <div className="absolute inset-x-0 bottom-0 z-50 max-h-[55vh] overflow-y-auto border-t border-border bg-card p-3 md:hidden">
-          <div className="mb-2 flex items-center justify-between">
-            <strong className="text-sm">Assets</strong>
-            <button className="text-xs" onClick={() => setMobileLibraryOpen(false)}>Close</button>
+        <div className="absolute inset-x-0 bottom-0 z-50 max-h-[55vh] overflow-y-auto border-t border-border bg-card md:hidden">
+          <div className="flex h-7 items-center justify-between border-b border-border px-2">
+            <span className="text-[11px] font-medium text-muted-foreground uppercase">Outliner</span>
+            <button type="button" className="text-[11px] text-muted-foreground hover:text-foreground" onClick={() => setMobileLibraryOpen(false)}>
+              Close
+            </button>
           </div>
-          <div className="space-y-2">
+          <div className="max-h-[48vh] overflow-y-auto">
             {filteredAssets.map((asset) => (
-              <button key={asset.id} className="w-full rounded border border-slate-700 px-2 py-2 text-left text-sm" onClick={() => setSelectedId(asset.id)}>
-                {asset.name} <span className="text-xs text-slate-400">({asset.format})</span>
+              <button
+                key={asset.id}
+                type="button"
+                className="flex h-7 w-full items-center gap-2 border-b border-border px-2 text-left text-[11px] hover:bg-muted/40"
+                onClick={() => {
+                  setSelectedId(asset.id);
+                  setMobileLibraryOpen(false);
+                }}
+              >
+                <span className="size-4 shrink-0 border border-border bg-muted" />
+                <span className="min-w-0 flex-1 truncate">{asset.name}</span>
+                <span className="shrink-0 text-muted-foreground">{asset.format}</span>
               </button>
             ))}
           </div>
@@ -699,16 +893,24 @@ export function ViewerApp() {
       )}
 
       {mobileControlsOpen && (
-        <div className="absolute inset-x-0 bottom-0 z-50 max-h-[60vh] overflow-y-auto border-t border-border bg-card p-3 md:hidden">
-          <div className="mb-2 flex items-center justify-between">
-            <strong className="text-sm">Quick Controls</strong>
-            <button className="text-xs" onClick={() => setMobileControlsOpen(false)}>Close</button>
+        <div className="absolute inset-x-0 bottom-0 z-50 max-h-[60vh] overflow-y-auto border-t border-border bg-card md:hidden">
+          <div className="flex h-7 items-center justify-between border-b border-border px-2">
+            <span className="text-[11px] font-medium text-muted-foreground uppercase">Properties</span>
+            <button type="button" className="text-[11px] text-muted-foreground hover:text-foreground" onClick={() => setMobileControlsOpen(false)}>
+              Close
+            </button>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="grid grid-cols-2 gap-0.5 p-2">
             {(["Solid", "Wireframe", "Texture", "X-Ray"] as RenderMode[]).map((mode) => (
-              <button key={mode} className={`rounded border px-2 py-2 ${renderMode === mode ? "border-ring bg-accent text-accent-foreground" : "border-border bg-muted/50"}`} onClick={() => setRenderMode(mode)}>
+              <Button
+                key={mode}
+                variant="outline"
+                size="sm"
+                className={cn("h-8 rounded-sm text-[11px] font-normal", renderMode === mode && "border-primary bg-primary/25")}
+                onClick={() => setRenderMode(mode)}
+              >
                 {mode}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
