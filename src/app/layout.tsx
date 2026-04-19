@@ -13,8 +13,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={cn("font-sans", geist.variable)}>
-      <body className="dark bg-background text-foreground">{children}</body>
+    <html lang="en" className={cn("dark font-sans", geist.variable)}>
+      <body className="min-h-screen bg-background text-foreground antialiased">{children}</body>
     </html>
   );
 }

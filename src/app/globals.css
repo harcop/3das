@@ -86,39 +86,43 @@
   --foreground: oklch(0.145 0 0);
 }
 
+/* Dark: Blender-adjacent flat UI (charcoal panels, muted text, blue selection) */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --radius: 0.125rem;
+  --background: oklch(0.27 0 0);
+  --foreground: oklch(0.88 0 0);
+  --card: oklch(0.31 0 0);
+  --card-foreground: oklch(0.88 0 0);
+  --popover: oklch(0.31 0 0);
+  --popover-foreground: oklch(0.88 0 0);
+  --primary: oklch(0.42 0.06 255);
+  --primary-foreground: oklch(0.96 0 0);
+  --secondary: oklch(0.34 0 0);
+  --secondary-foreground: oklch(0.88 0 0);
+  --muted: oklch(0.34 0 0);
+  --muted-foreground: oklch(0.62 0 0);
+  --accent: oklch(0.48 0.1 255);
+  --accent-foreground: oklch(0.96 0 0);
+  --destructive: oklch(0.55 0.18 25);
+  --border: oklch(0.22 0 0);
+  --input: oklch(0.26 0 0);
+  --ring: oklch(0.52 0.1 255);
+  --chart-1: oklch(0.65 0 0);
+  --chart-2: oklch(0.55 0 0);
+  --chart-3: oklch(0.45 0 0);
+  --chart-4: oklch(0.38 0 0);
+  --chart-5: oklch(0.32 0 0);
+  --sidebar: oklch(0.29 0 0);
+  --sidebar-foreground: oklch(0.88 0 0);
+  --sidebar-primary: oklch(0.48 0.1 255);
+  --sidebar-primary-foreground: oklch(0.96 0 0);
+  --sidebar-accent: oklch(0.34 0 0);
+  --sidebar-accent-foreground: oklch(0.88 0 0);
+  --sidebar-border: oklch(0.22 0 0);
+  --sidebar-ring: oklch(0.52 0.1 255);
   --doodle-tile: 420px;
+  --blender-selection: rgba(86, 128, 194, 0.38);
+  --blender-viewport: #404040;
 }
 
 @layer base {
@@ -138,13 +142,47 @@
     background-attachment: fixed;
   }
 
-  .dark html {
-    background-image: url("/doodle-tile-dark.svg");
+  html.dark {
+    background-image: none;
+    background-color: var(--background);
   }
 
   body {
     @apply antialiased bg-background text-foreground;
     min-height: 100%;
     background-color: transparent;
+  }
+}
+
+@layer components {
+  /* Blender-like compact property sliders */
+  .blender-range {
+    @apply w-full cursor-pointer appearance-none bg-transparent;
+    height: 4px;
+    accent-color: var(--ring);
+  }
+
+  .blender-range::-webkit-slider-runnable-track {
+    height: 2px;
+    background: var(--border);
+    border-radius: 0;
+  }
+
+  .blender-range::-webkit-slider-thumb {
+    appearance: none;
+    width: 6px;
+    height: 10px;
+    margin-top: -4px;
+    background: var(--muted-foreground);
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+
+  .blender-panel-header {
+    @apply flex h-7 shrink-0 items-center border-b border-border bg-muted/40 px-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase;
+  }
+
+  .blender-editor-label {
+    @apply text-[11px] text-muted-foreground;
   }
 }
