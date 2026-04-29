@@ -3,79 +3,16 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Canvas, ThreeEvent, useLoader, useThree } from "@react-three/fiber";
 import { Environment, GizmoHelper, GizmoViewport, Grid, OrbitControls } from "@react-three/drei";
-import {
-  Box3,
-  Color,
-  Group,
-  MathUtils,
-  Mesh,
-  MeshBasicMaterial,
-  MeshLambertMaterial,
-  MeshStandardMaterial,
-  Object3D,
-  Vector3,
-  type Material
-} from "three";
+import { Group, MathUtils, MeshStandardMaterial, Object3D, Vector3 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-
-type RenderMode = "Solid" | "Wireframe" | "Texture" | "X-Ray";
-type CameraMode = "Perspective" | "Orthographic";
-type Format = ".glb" | ".gltf" | ".obj" | ".fbx";
-
-type AssetItem = {
-  id: string;
-  name: string;
-  category: string;
-  format: Format;
-  sizeBytes: number;
-  source: "procedural" | "file";
-  proceduralKind?: "transport" | "mechanical" | "architecture";
-  fileUrl?: string;
-};
-
-type Stats = { polygons: number; vertices: number };
-type Bounds = { center: Vector3; size: Vector3; radius: number };
-
-const BASE_ASSETS: AssetItem[] = [
-  {
-    id: "transport-proxy",
-    name: "Transport Prototype",
-    category: "Transport",
-    format: ".glb",
-    sizeBytes: 680_000,
-    source: "procedural",
-    proceduralKind: "transport"
-  },
-  {
-    id: "gear-assembly",
-    name: "Gear Assembly",
-    category: "Mechanical",
-    format: ".obj",
-    sizeBytes: 410_000,
-    source: "procedural",
-    proceduralKind: "mechanical"
-  },
-  {
-    id: "tower-block",
-    name: "Tower Block",
-    category: "Architecture",
-    format: ".fbx",
-    sizeBytes: 820_000,
-    source: "procedural",
-    proceduralKind: "architecture"
-  }
-];
-
-function bytesToSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
+import { BASE_ASSETS, PRIMITIVE_KINDS, PRIMITIVE_LABELS } from "@/components/viewer/constants";
+import { applyRenderMode, bytesToSize, collectBounds, collectStats, disposeObject3D } from "@/components/viewer/scene-utils";
+import type { AssetItem, Bounds, CameraMode, Format, PrimitiveKind, RenderMode, Stats } from "@/components/viewer/types";
 
 function PropertySection({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -86,85 +23,6 @@ function PropertySection({ title, children }: { title: string; children: ReactNo
   );
 }
 
-function collectStats(object: Object3D): Stats {
-  let vertices = 0;
-  let polygons = 0;
-  object.traverse((node) => {
-    if (!(node instanceof Mesh) || !node.geometry) return;
-    const position = node.geometry.getAttribute("position");
-    if (position) vertices += position.count;
-    if (node.geometry.index) polygons += Math.floor(node.geometry.index.count / 3);
-    else if (position) polygons += Math.floor(position.count / 3);
-  });
-  return { polygons, vertices };
-}
-
-function collectBounds(object: Object3D): Bounds {
-  const box = new Box3().setFromObject(object);
-  const size = box.getSize(new Vector3());
-  const center = box.getCenter(new Vector3());
-  const radius = Math.max(size.x, size.y, size.z) * 0.75 || 1.5;
-  return { center, size, radius };
-}
-
-function disposeMaterial(material: Material | Material[] | null | undefined) {
-  if (!material) return;
-  if (Array.isArray(material)) {
-    material.forEach((m) => m.dispose());
-    return;
-  }
-  material.dispose();
-}
-
-/** Full dispose for cloned loader roots (materials + geometries). */
-function disposeObject3D(root: Object3D) {
-  root.traverse((node) => {
-    if (!(node instanceof Mesh)) return;
-    disposeMaterial(node.material);
-    node.geometry?.dispose();
-  });
-}
-
-const VIEWER_MATERIAL_TAG = "__viewerAppliedMaterial";
-
-function applyRenderMode(object: Object3D, mode: RenderMode) {
-  object.traverse((node) => {
-    if (!(node instanceof Mesh)) return;
-    const prior = Array.isArray(node.material) ? node.material[0] : node.material;
-    const base = prior instanceof MeshStandardMaterial ? prior : new MeshStandardMaterial({ color: "#8a9099" });
-    const oldMats = Array.isArray(node.material) ? node.material : [node.material];
-    oldMats.forEach((m) => {
-      if (m && (m as Material & { userData?: Record<string, unknown> }).userData?.[VIEWER_MATERIAL_TAG]) {
-        m.dispose();
-      }
-    });
-    let nextMaterial: MeshBasicMaterial | MeshLambertMaterial | MeshStandardMaterial;
-    if (mode === "Wireframe") {
-      nextMaterial = new MeshBasicMaterial({ color: new Color("#b0b5bd"), wireframe: true });
-    } else if (mode === "Texture") {
-      nextMaterial = new MeshLambertMaterial({ color: base.color, map: base.map ?? null });
-    } else if (mode === "X-Ray") {
-      nextMaterial = new MeshStandardMaterial({
-        color: base.color,
-        transparent: true,
-        opacity: 0.36,
-        roughness: 0.75,
-        metalness: 0.1
-      });
-    } else {
-      nextMaterial = new MeshStandardMaterial({
-        color: base.color,
-        map: base.map ?? null,
-        roughness: base.roughness ?? 0.7,
-        metalness: base.metalness ?? 0.1
-      });
-    }
-    nextMaterial.userData = { ...nextMaterial.userData, [VIEWER_MATERIAL_TAG]: true };
-    node.material = nextMaterial;
-    node.castShadow = true;
-    node.receiveShadow = true;
-  });
-}
 
 function ProceduralModel({
   kind,
@@ -231,6 +89,74 @@ function ProceduralModel({
             <meshStandardMaterial color="#6b5c4c" {...style} />
           </mesh>
         </group>
+      )}
+    </group>
+  );
+}
+
+function PrimitiveShapeModel({
+  kind,
+  renderMode,
+  onReady
+}: {
+  kind: PrimitiveKind;
+  renderMode: RenderMode;
+  onReady: (root: Object3D) => void;
+}) {
+  const ref = useRef<Group>(null);
+
+  useEffect(() => {
+    if (ref.current) onReady(ref.current);
+  }, [kind, onReady]);
+
+  const style =
+    renderMode === "Wireframe"
+      ? { wireframe: true, transparent: false, opacity: 1, flatShading: false }
+      : renderMode === "Texture"
+        ? { wireframe: false, transparent: false, opacity: 1, flatShading: true }
+        : renderMode === "X-Ray"
+          ? { wireframe: false, transparent: true, opacity: 0.36, flatShading: false }
+          : { wireframe: false, transparent: false, opacity: 1, flatShading: false };
+
+  const matColor = "#8e949d";
+
+  return (
+    <group ref={ref}>
+      {kind === "cube" && (
+        <mesh castShadow receiveShadow position={[0, 0.5, 0]}>
+          <boxGeometry args={[1, 1, 1]} />
+          <meshStandardMaterial color={matColor} {...style} />
+        </mesh>
+      )}
+      {kind === "sphere" && (
+        <mesh castShadow receiveShadow position={[0, 0.6, 0]}>
+          <sphereGeometry args={[0.6, 32, 24]} />
+          <meshStandardMaterial color={matColor} {...style} />
+        </mesh>
+      )}
+      {kind === "cylinder" && (
+        <mesh castShadow receiveShadow position={[0, 0.65, 0]}>
+          <cylinderGeometry args={[0.45, 0.45, 1.3, 32]} />
+          <meshStandardMaterial color={matColor} {...style} />
+        </mesh>
+      )}
+      {kind === "cone" && (
+        <mesh castShadow receiveShadow position={[0, 0.7, 0]}>
+          <coneGeometry args={[0.55, 1.4, 32]} />
+          <meshStandardMaterial color={matColor} {...style} />
+        </mesh>
+      )}
+      {kind === "torus" && (
+        <mesh castShadow receiveShadow position={[0, 0.8, 0]}>
+          <torusGeometry args={[0.6, 0.2, 24, 48]} />
+          <meshStandardMaterial color={matColor} {...style} />
+        </mesh>
+      )}
+      {kind === "plane" && (
+        <mesh castShadow receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
+          <planeGeometry args={[2, 2]} />
+          <meshStandardMaterial color={matColor} side={2} {...style} />
+        </mesh>
       )}
     </group>
   );
@@ -369,6 +295,8 @@ function SceneContent({
         >
           {asset.source === "procedural" && asset.proceduralKind ? (
             <ProceduralModel kind={asset.proceduralKind} renderMode={renderMode} onReady={handleReady} />
+          ) : asset.source === "primitive" && asset.primitiveKind ? (
+            <PrimitiveShapeModel kind={asset.primitiveKind} renderMode={renderMode} onReady={handleReady} />
           ) : (
             <Suspense fallback={null}>
               <ImportedModel asset={asset} renderMode={renderMode} onReady={handleReady} />
@@ -494,6 +422,20 @@ export function ViewerApp() {
     event.target.value = "";
   }, []);
 
+  const handleInsertPrimitive = useCallback((kind: PrimitiveKind) => {
+    const item: AssetItem = {
+      id: `primitive-${kind}-${Date.now()}`,
+      name: `${PRIMITIVE_LABELS[kind]} ${assets.filter((a) => a.source === "primitive" && a.primitiveKind === kind).length + 1}`,
+      category: "Primitive",
+      format: ".primitive",
+      sizeBytes: 0,
+      source: "primitive",
+      primitiveKind: kind
+    };
+    setAssets((prev) => [item, ...prev]);
+    setSelectedId(item.id);
+  }, [assets]);
+
   const triggerFullscreen = useCallback(() => {
     if (!viewportRef.current) return;
     if (!document.fullscreenElement) void viewportRef.current.requestFullscreen?.().catch(() => undefined);
@@ -555,6 +497,7 @@ export function ViewerApp() {
                   <option value=".gltf">.gltf</option>
                   <option value=".obj">.obj</option>
                   <option value=".fbx">.fbx</option>
+                  <option value=".primitive">.primitive</option>
                 </select>
                 <select aria-label="Filter categories" className={cn(selectClass, "border-0")} value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
                   <option value="all">Category</option>
@@ -621,6 +564,14 @@ export function ViewerApp() {
                 })}
               </div>
               <input ref={fileInputRef} type="file" className="hidden" accept=".glb,.gltf,.obj,.fbx" onChange={handleImport} />
+              <div className="grid grid-cols-2 gap-0.5 border-t border-border">
+                <Button variant="outline" size="sm" className="h-7 rounded-none border-0 border-r border-border text-[11px] font-normal" onClick={() => handleInsertPrimitive("cube")}>
+                  + Cube
+                </Button>
+                <Button variant="outline" size="sm" className="h-7 rounded-none border-0 text-[11px] font-normal" onClick={() => handleInsertPrimitive("sphere")}>
+                  + Sphere
+                </Button>
+              </div>
               <Button
                 aria-label="Import asset"
                 variant="outline"
@@ -757,6 +708,22 @@ export function ViewerApp() {
                 <Button variant="outline" size="sm" className="h-7 w-full rounded-sm text-[11px] font-normal" onClick={() => setRotation({ x: 0, y: 0, z: 0 })}>
                   Reset
                 </Button>
+              </PropertySection>
+
+              <PropertySection title="Add mesh">
+                <div className="grid grid-cols-2 gap-0.5">
+                  {PRIMITIVE_KINDS.map((kind) => (
+                    <Button
+                      key={kind}
+                      variant="outline"
+                      size="sm"
+                      className="h-7 rounded-sm text-[11px] font-normal"
+                      onClick={() => handleInsertPrimitive(kind)}
+                    >
+                      {PRIMITIVE_LABELS[kind]}
+                    </Button>
+                  ))}
+                </div>
               </PropertySection>
 
               <PropertySection title="Viewport display">
