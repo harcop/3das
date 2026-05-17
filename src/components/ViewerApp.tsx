@@ -3,7 +3,8 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Canvas, ThreeEvent, useLoader, useThree } from "@react-three/fiber";
 import { Environment, GizmoHelper, GizmoViewport, Grid, OrbitControls } from "@react-three/drei";
-import { Group, MathUtils, MeshStandardMaterial, Object3D, Vector3 } from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
+import { Group, MathUtils, Object3D, Vector3 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
@@ -12,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { BASE_ASSETS, PRIMITIVE_KINDS, PRIMITIVE_LABELS } from "@/components/viewer/constants";
 import { applyRenderMode, bytesToSize, collectBounds, collectStats, disposeObject3D } from "@/components/viewer/scene-utils";
+import { ViewerAssetErrorBoundary } from "@/components/viewer/viewer-asset-error-boundary";
 import type { AssetItem, Bounds, CameraMode, Format, PrimitiveKind, RenderMode, Stats } from "@/components/viewer/types";
 
 function PropertySection({ title, children }: { title: string; children: ReactNode }) {
@@ -220,7 +222,8 @@ function SceneContent({
   showShadows,
   resetSignal,
   onCanvasReady,
-  onModelReady
+  onModelReady,
+  onAssetLoadError
 }: {
   asset: AssetItem;
   renderMode: RenderMode;
@@ -234,9 +237,10 @@ function SceneContent({
   resetSignal: number;
   onCanvasReady: (canvas: HTMLCanvasElement) => void;
   onModelReady: (stats: Stats, polygonsOverBudget: boolean) => void;
+  onAssetLoadError: (message: string) => void;
 }) {
   const { camera, gl } = useThree();
-  const controlsRef = useRef<any>(null);
+  const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const groupRef = useRef<Group>(null);
   const boundsRef = useRef<Bounds>({ center: new Vector3(), size: new Vector3(1, 1, 1), radius: 2 });
 
@@ -299,7 +303,9 @@ function SceneContent({
             <PrimitiveShapeModel kind={asset.primitiveKind} renderMode={renderMode} onReady={handleReady} />
           ) : (
             <Suspense fallback={null}>
-              <ImportedModel asset={asset} renderMode={renderMode} onReady={handleReady} />
+              <ViewerAssetErrorBoundary key={asset.id} onError={onAssetLoadError}>
+                <ImportedModel asset={asset} renderMode={renderMode} onReady={handleReady} />
+              </ViewerAssetErrorBoundary>
             </Suspense>
           )}
         </group>
@@ -348,6 +354,7 @@ export function ViewerApp() {
   const [mobileLibraryOpen, setMobileLibraryOpen] = useState(false);
   const [mobileControlsOpen, setMobileControlsOpen] = useState(false);
   const [resetSignal, setResetSignal] = useState(0);
+  const [assetError, setAssetError] = useState<string | null>(null);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -399,6 +406,7 @@ export function ViewerApp() {
   useEffect(() => {
     setLoading(true);
     setShowSpinner(false);
+    setAssetError(null);
     const timer = window.setTimeout(() => setShowSpinner(true), 300);
     return () => window.clearTimeout(timer);
   }, [selectedAsset.id]);
@@ -465,7 +473,14 @@ export function ViewerApp() {
     setStats(nextStats);
     setLoading(false);
     setShowSpinner(false);
+    setAssetError(null);
     if (overBudget) window.alert("Warning: this model exceeds 2M polygons and may reduce frame rate.");
+  }, []);
+
+  const onAssetLoadError = useCallback((message: string) => {
+    setAssetError(message);
+    setLoading(false);
+    setShowSpinner(false);
   }, []);
 
   const selectClass =
@@ -555,8 +570,11 @@ export function ViewerApp() {
                       <span className="min-w-0 flex-1 truncate">{asset.name}</span>
                       <span className="shrink-0 tabular-nums text-muted-foreground">{asset.format}</span>
                       {tooltipId === asset.id && (
-                        <div className="absolute left-1 top-7 z-10 whitespace-nowrap border border-border bg-popover px-1.5 py-0.5 text-[10px] text-popover-foreground">
-                          {stats.polygons.toLocaleString()} tris · {bytesToSize(asset.sizeBytes)} · {asset.category}
+                        <div className="absolute left-1 top-7 z-10 max-w-[min(90vw,260px)] border border-border bg-popover px-1.5 py-0.5 text-[10px] text-popover-foreground whitespace-normal leading-snug">
+                          <span className="opacity-85">
+                            {asset.category} · {asset.format} · {bytesToSize(asset.sizeBytes)}
+                            {asset.id === selectedAsset.id ? ` · ${stats.polygons.toLocaleString()} tris` : ""}
+                          </span>
                         </div>
                       )}
                     </button>
@@ -606,6 +624,21 @@ export function ViewerApp() {
           </div>
 
           <div className="relative min-h-0 flex-1">
+            {assetError && selectedAsset.source === "file" && (
+              <div
+                role="alert"
+                className="absolute inset-x-0 top-0 z-40 border-b border-destructive/40 bg-destructive/15 px-2 py-1 text-[11px] text-foreground backdrop-blur-sm"
+              >
+                <span className="text-destructive">Import failed:</span> <span className="break-all opacity-95">{assetError}</span>
+                <button
+                  type="button"
+                  className="float-right ml-2 rounded-sm border border-border bg-card px-1.5 py-0 hover:bg-muted"
+                  onClick={() => setAssetError(null)}
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
             <Canvas
               key={selectedAsset.id}
               shadows={showShadows}
@@ -631,6 +664,7 @@ export function ViewerApp() {
                 resetSignal={resetSignal}
                 onCanvasReady={onCanvasReady}
                 onModelReady={onModelReady}
+                onAssetLoadError={onAssetLoadError}
               />
             </Canvas>
 
