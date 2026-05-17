@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils";
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
-  title: "3D Asset Viewer",
-  description: "Interactive three-panel 3D asset viewer"
+  title: "3das · Creative viewport shell",
+  description: "Next.js + Three.js workspace shell for multidisciplinary 3D tooling"
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
